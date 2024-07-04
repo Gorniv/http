@@ -75,7 +75,14 @@ Encoding _encodingForHeaders(Map<String, String> headers) =>
 ///
 /// Defaults to `application/octet-stream`.
 MediaType _contentTypeForHeaders(Map<String, String> headers) {
-  var contentType = headers['content-type'];
-  if (contentType != null) return MediaType.parse(contentType);
-  return MediaType('application', 'octet-stream');
+  var contentType = headers['content-type']?.trim();
+  try {
+    if (contentType != null) return MediaType.parse(contentType);
+    return MediaType('application', 'octet-stream');
+  } catch (error) {
+    if (contentType == 'application/json;') {
+      return MediaType('application', 'json');
+    }
+    return MediaType('application', 'octet-stream');
+  }
 }
