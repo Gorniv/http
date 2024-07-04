@@ -80,7 +80,11 @@ MediaType _contentTypeForHeaders(Map<String, String> headers) {
     if (contentType != null) return MediaType.parse(contentType);
     return MediaType('application', 'octet-stream');
   } catch (error) {
-    if (contentType == 'application/json;') {
+    // Log the error for debugging purposes
+    print('Failed to parse content-type: $error');
+
+    // Handle specific known issue with 'application/json;'
+    if (contentType != null && contentType.startsWith('application/json')) {
       return MediaType('application', 'json');
     }
     return MediaType('application', 'octet-stream');
