@@ -9,10 +9,33 @@ import 'dart:typed_data';
 import 'package:async/async.dart';
 import 'package:http/http.dart';
 import 'package:http_profile/http_profile.dart';
+import 'package:objective_c/objective_c.dart';
 
 import 'cupertino_api.dart';
 
 final _digitRegex = RegExp(r'^\d+$');
+
+const _nsurlErrorCancelled = -999;
+
+/// A [ClientException] generated from an [NSError].
+class NSErrorClientException extends ClientException {
+  final NSError error;
+
+  NSErrorClientException(this.error, [Uri? uri])
+      : super(error.localizedDescription.toDartString(), uri);
+
+  @override
+  String toString() {
+    final b = StringBuffer(
+        'NSErrorClientException: ${error.localizedDescription.toDartString()} '
+        '[domain=${error.domain.toDartString()}, code=${error.code}]');
+
+    if (uri != null) {
+      b.write(', uri=$uri');
+    }
+    return b.toString();
+  }
+}
 
 /// This class can be removed when `package:http` v2 is released.
 class _StreamedResponseWithUrl extends StreamedResponse
@@ -32,12 +55,15 @@ class _StreamedResponseWithUrl extends StreamedResponse
 class _TaskTracker {
   final responseCompleter = Completer<URLResponse>();
   final BaseRequest request;
-  final responseController = StreamController<Uint8List>();
+  final StreamController<Uint8List> responseController;
+
+  /// Whether the response stream subscription has been cancelled.
+  bool responseListenerCancelled = false;
   final HttpClientRequestProfile? profile;
   int numRedirects = 0;
   Uri? lastUrl; // The last URL redirected to.
 
-  _TaskTracker(this.request, this.profile);
+  _TaskTracker(this.request, this.responseController, this.profile);
 
   void close() {
     responseController.close();
@@ -164,11 +190,16 @@ class CupertinoClient extends BaseClient {
   static _TaskTracker _tracker(URLSessionTask task) => _tasks[task]!;
 
   static void _onComplete(
-      URLSession session, URLSessionTask task, Error? error) {
+      URLSession session, URLSessionTask task, NSError? error) {
     final taskTracker = _tracker(task);
-    if (error != null) {
-      final exception = ClientException(
-          error.localizedDescription ?? 'Unknown', taskTracker.request.url);
+    // The task will only be cancelled if the user calls
+    // `StreamedResponse.stream.cancel()`, which can only happen if the response
+    // has already been received. Therefore, it is safe to handle task
+    // cancellation errors as if the response completed normally.
+    if (error != null &&
+        !(error.domain.toDartString() == 'NSURLErrorDomain' &&
+            error.code == _nsurlErrorCancelled)) {
+      final exception = NSErrorClientException(error, taskTracker.request.url);
       if (taskTracker.profile != null &&
           taskTracker.profile!.requestData.endTime == null) {
         // Error occurred during the request.
@@ -183,6 +214,7 @@ class CupertinoClient extends BaseClient {
         taskTracker.responseCompleter.completeError(exception);
       }
     } else {
+      assert(error == null || taskTracker.responseListenerCancelled);
       assert(taskTracker.profile == null ||
           taskTracker.profile!.requestData.endTime != null);
 
@@ -196,10 +228,11 @@ class CupertinoClient extends BaseClient {
     _tasks.remove(task);
   }
 
-  static void _onData(URLSession session, URLSessionTask task, Data data) {
+  static void _onData(URLSession session, URLSessionTask task, NSData data) {
     final taskTracker = _tracker(task);
-    taskTracker.responseController.add(data.bytes);
-    taskTracker.profile?.responseData.bodySink.add(data.bytes);
+    if (taskTracker.responseListenerCancelled) return;
+    taskTracker.responseController.add(data.toList());
+    taskTracker.profile?.responseData.bodySink.add(data.toList());
   }
 
   static URLRequest? _onRedirect(URLSession session, URLSessionTask task,
@@ -218,13 +251,13 @@ class CupertinoClient extends BaseClient {
     return null;
   }
 
-  static URLSessionResponseDisposition _onResponse(
+  static NSURLSessionResponseDisposition _onResponse(
       URLSession session, URLSessionTask task, URLResponse response) {
     final taskTracker = _tracker(task);
     taskTracker.responseCompleter.complete(response);
     unawaited(taskTracker.profile?.requestData.close());
 
-    return URLSessionResponseDisposition.urlSessionResponseAllow;
+    return NSURLSessionResponseDisposition.NSURLSessionResponseAllow;
   }
 
   /// A [Client] with the default configuration.
@@ -319,17 +352,17 @@ class CupertinoClient extends BaseClient {
     if (request is Request) {
       // Optimize the (typical) `Request` case since assigning to
       // `httpBodyStream` requires a lot of expensive setup and data passing.
-      urlRequest.httpBody = Data.fromList(request.bodyBytes);
+      urlRequest.httpBody = request.bodyBytes.toNSData();
       profile?.requestData.bodySink.add(request.bodyBytes);
     } else if (await _hasData(stream) case (true, final s)) {
       // If the request is supposed to be bodyless (e.g. GET requests)
       // then setting `httpBodyStream` will cause the request to fail -
       // even if the stream is empty.
       if (profile == null) {
-        urlRequest.httpBodyStream = s;
+        urlRequest.httpBodyStream = s.toNSInputStream();
       } else {
         final splitter = StreamSplitter(s);
-        urlRequest.httpBodyStream = splitter.split();
+        urlRequest.httpBodyStream = splitter.split().toNSInputStream();
         unawaited(profile.requestData.bodySink.addStream(splitter.split()));
       }
     }
@@ -337,7 +370,13 @@ class CupertinoClient extends BaseClient {
     // This will preserve Apple default headers - is that what we want?
     request.headers.forEach(urlRequest.setValueForHttpHeaderField);
     final task = urlSession.dataTaskWithRequest(urlRequest);
-    final taskTracker = _TaskTracker(request, profile);
+    final subscription = StreamController<Uint8List>(onCancel: () {
+      final taskTracker = _tasks[task];
+      if (taskTracker == null) return;
+      taskTracker.responseListenerCancelled = true;
+      task.cancel();
+    });
+    final taskTracker = _TaskTracker(request, subscription, profile);
     _tasks[task] = taskTracker;
     task.resume();
 
