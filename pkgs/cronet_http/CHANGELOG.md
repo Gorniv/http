@@ -1,7 +1,25 @@
-## 1.4.0-wip
+## 1.6.1-wip
+
+* Fix a bug where cronet would throw `ClassNotFoundException` in debug mode.
+
+## 1.6.0
+
+* Upgrade the `cronet-embedded` dependency to `141.7340` version to
+  support 16 KB page sizes. `cronet-embedded` has target SDK version of 24.
+* Change the minimum SDK version to 24.
+* Change the compile SDK version to 34 for compatibility with AGP 8.13.
+
+## 1.5.0
+
+* Add the ability to abort requests.
+* Upgrade Cronet dependencies version.
+
+## 1.4.0
 
 * Add a new `CronetStreamedResponse` class that provides additional information
   about the HTTP response.
+* Fix a Flutter warning by upgrading to Kotlin 1.18.10.
+* Upgrade `package:jni` and `package:jnigen` to 0.14.2.
 
 ## 1.3.4
 
@@ -58,7 +76,7 @@
 
 ## 1.0.0
 
-* No functional changes. 
+* No functional changes.
 
 ## 0.4.2
 
@@ -66,14 +84,14 @@
 * Fix a bug where incorrect HTTP request methods were sent.
 
 ## 0.4.1
- 
-* Require `package:jni >= 0.7.1` so that depending on `package:cronet_http` 
+
+* Require `package:jni >= 0.7.1` so that depending on `package:cronet_http`
   does not break macOS builds.
 
 * Fix obsolete `CronetClient()` constructor usage.
 
 ## 0.4.0
- 
+
 * Use more efficient operations when copying bytes between Java and Dart.
 
 ## 0.3.0-jni
@@ -127,7 +145,7 @@
 
 ## 0.0.2
 
-* Set `StreamedResponse.reasonPhrase` and `StreamedResponse.request`. 
+* Set `StreamedResponse.reasonPhrase` and `StreamedResponse.request`.
 
 ## 0.0.1
 

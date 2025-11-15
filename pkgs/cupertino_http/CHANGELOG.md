@@ -1,3 +1,13 @@
+## 2.4.0-wip
+
+* Switch to `package:objective_c` `8.1.0` and `package:ffigen` `19.1.0`.
+* Add URL to thrown `RequestAbortedException`.
+ 
+## 2.3.0
+
+* Add the ability to abort requests.
+* Make `ConnectionException.toString` more helpful.
+
 ## 2.2.0
 
 * Cancel requests when the response stream is cancelled.
