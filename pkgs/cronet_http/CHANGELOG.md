@@ -1,4 +1,9 @@
-## 1.7.0-wip
+## 1.7.1-wip
+
+* Made callbacks asynchronous to prevent background errors caused by the
+  unavailability of the Dart callback.
+
+## 1.7.0
 
 * Fix a bug where cronet would throw `ClassNotFoundException` in debug mode.
 * Upgrade `package:jni` to 0.15.2 and `package:jnigen` to 0.15.0.
